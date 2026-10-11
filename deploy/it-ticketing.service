@@ -1,0 +1,12 @@
+[Unit]
+Description=MSI IT Ticketing
+After=network.target
+[Service]
+WorkingDirectory=/opt/msi-it-ticketing
+ExecStart=/usr/bin/node /opt/msi-it-ticketing/server.js
+Environment=NODE_ENV=production
+Environment=PORT=3010
+Restart=always
+User=msiapp
+[Install]
+WantedBy=multi-user.target
