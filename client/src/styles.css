@@ -69,3 +69,16 @@ dialog{border:1px solid #dbe3ed;background:#fff;box-shadow:0 24px 80px rgba(24,4
 .screen-card{border-color:#dfe5ee;box-shadow:0 3px 12px rgba(24,40,64,.04)}.settings-list div{border-color:#dfe5ee;background:#fff}.report-placeholder{border-color:#b8c9e6;background:#f4f8ff}
 .audit-row{border-bottom-color:#e3e8ef}.confirm-dialog{border:1px solid #dbe3ed;box-shadow:0 20px 60px rgba(24,40,64,.2)}
 @media(max-width:900px){header{padding:0 20px}.top-nav{margin-left:8px}.metrics{gap:10px}}
+
+/* Ticket backgrounds and borders use the assigned technician color. */
+.issue,.table-row{border-left:4px solid var(--ticket-accent,#cbd5e1);background:var(--ticket-fill,#fff)}
+.issue:hover,.table-row:hover{background:var(--ticket-fill,#fff);border-left-color:var(--ticket-accent,#cbd5e1)}
+.issue .key,.issue small,.issue .state{color:#52627a}
+.filters>select.technician-filter{width:auto;min-width:165px;max-width:260px}
+.board{overflow-x:auto}
+
+.technician-form{display:flex;align-items:end;gap:16px;flex-wrap:wrap;margin:24px 0}.technician-settings label{display:grid;gap:7px;font-size:12px;color:#52627a}.technician-form label:first-child{flex:1;min-width:220px}.technician-settings input[type=color]{width:64px;height:42px;padding:4px;cursor:pointer}.technician-list{border-top:1px solid var(--line)}.technician-row{display:flex;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}.technician-row strong{flex:1}.color-dot{width:18px;height:18px;border-radius:50%;border:1px solid #0002}.technician-row code{color:#52627a}.technician-row label{display:flex;align-items:center;gap:10px}
+
+.title-edit{display:flex;align-items:end;gap:10px;margin:18px 0}.title-edit label{flex:1;display:grid;gap:7px;font-size:12px;color:#52627a}.title-edit button{white-space:nowrap}
+
+.description-edit{display:grid;gap:10px;margin:24px 0}.description-edit label{display:grid;gap:7px;font-size:12px;color:#52627a}.description-edit textarea{resize:vertical;min-height:130px;line-height:1.6}.description-edit button{justify-self:start}

@@ -57,6 +57,12 @@ for (const column of [
   try { db.exec(`ALTER TABLE tickets ADD COLUMN ${column[0]} ${column[1]}`); } catch {}
 }
 db.exec("UPDATE tickets SET project='IT Department' WHERE project IN ('IT Help Desk','Operations')");
+db.exec(`CREATE TABLE IF NOT EXISTS technicians (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  color TEXT NOT NULL DEFAULT '#356ee8'
+);
+INSERT OR IGNORE INTO technicians(name) SELECT DISTINCT trim(assignee) FROM tickets WHERE trim(assignee) <> '';`);
 db.exec(`INSERT INTO audit_log (ticket_id,ticket_key,ticket_subject,actor,action,details)
   SELECT t.id,'IT-'||printf('%04d',t.id),t.subject,'System','Audit tracking enabled',
     'Earlier changes were not recorded before audit tracking was enabled.'
@@ -77,6 +83,24 @@ function audit(ticket, actor, action, details = "") {
 }
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, app: "it-ticketing" }));
+app.get("/api/technicians", (_req, res) => {
+  res.json(db.prepare("SELECT * FROM technicians ORDER BY name COLLATE NOCASE").all());
+});
+app.post("/api/technicians", (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  const color = String(req.body?.color || "");
+  if (!name || name.length > 120 || !/^#[0-9a-f]{6}$/i.test(color)) return res.status(400).json({error:"Enter a name (up to 120 characters) and a valid color."});
+  if (db.prepare("SELECT id FROM technicians WHERE name=?").get(name)) return res.status(409).json({error:"A technician with that name already exists."});
+  const result = db.prepare("INSERT INTO technicians(name,color) VALUES (?,?)").run(name,color);
+  res.status(201).json(db.prepare("SELECT * FROM technicians WHERE id=?").get(result.lastInsertRowid));
+});
+app.patch("/api/technicians/:id", (req,res) => {
+  const color = String(req.body?.color || "");
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return res.status(400).json({error:"Choose a valid color."});
+  const result = db.prepare("UPDATE technicians SET color=? WHERE id=?").run(color,req.params.id);
+  if (!result.changes) return res.status(404).json({error:"Technician not found."});
+  res.json({ok:true});
+});
 app.get("/api/tickets", (req, res) => {
   const status = String(req.query.status || "all");
   const dateOrder = req.query.sort === "oldest" ? "ASC" : "DESC";
@@ -86,6 +110,7 @@ app.get("/api/tickets", (req, res) => {
   const to = String(req.query.to || "");
   const where = ["t.archived=?"];
   const params = [archived];
+  if (typeof req.query.assignee === "string") { where.push("t.assignee=?"); params.push(req.query.assignee); }
   if (status !== "all") { where.push("t.status=?"); params.push(status); }
   if (from) { where.push("datetime(t.created_at) >= datetime(?)"); params.push(from); }
   if (to) { where.push("datetime(t.created_at) < datetime(?)"); params.push(to); }
@@ -94,7 +119,7 @@ app.get("/api/tickets", (req, res) => {
     const term = `%${q}%`;
     params.push(term, term, term, term);
   }
-  res.json(db.prepare(`SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id=t.id) comment_count
+  res.json(db.prepare(`SELECT t.*, (SELECT color FROM technicians WHERE name=t.assignee) assignee_color, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id=t.id) comment_count
     FROM tickets t WHERE ${where.join(" AND ")}
     ORDER BY created_at ${dateOrder}, id ${dateOrder}`).all(...params));
 });
@@ -129,11 +154,17 @@ app.patch("/api/tickets/:id", (req, res) => {
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid ticket id" });
   const current = db.prepare("SELECT * FROM tickets WHERE id=?").get(id);
   if (!current) return res.status(404).json({ error: "not found" });
+  if (body.description !== undefined && (typeof body.description !== "string" || !body.description.trim() || body.description.trim().length > 10000)) return res.status(400).json({error:"Description must be between 1 and 10,000 characters."});
+  if (body.requester !== undefined && (typeof body.requester !== "string" || !body.requester.trim() || body.requester.trim().length > 250)) return res.status(400).json({error:"Requester must be between 1 and 250 characters."});
+  if (body.issue_type !== undefined && !["Task","Incident","Service request","Bug"].includes(body.issue_type)) return res.status(400).json({error:"Invalid issue type."});
+  if (body.category !== undefined && !["Hardware","Software","Access","Network","General"].includes(body.category)) return res.status(400).json({error:"Invalid category."});
   const allowedStatuses = ["New", "In Progress", "Waiting", "Resolved", "Closed"];
   const allowedPriorities = ["Low", "Normal", "High", "Critical"];
+  if (body.subject !== undefined && (typeof body.subject !== "string" || !body.subject.trim() || body.subject.trim().length > 250)) return res.status(400).json({error:"Title must be between 1 and 250 characters."});
   if (body.status !== undefined && !allowedStatuses.includes(body.status)) return res.status(400).json({ error: "invalid status" });
   if (body.priority !== undefined && !allowedPriorities.includes(body.priority)) return res.status(400).json({ error: "invalid priority" });
   if (body.assignee !== undefined && String(body.assignee).trim().length > 120) return res.status(400).json({ error: "assignee is too long" });
+  if (body.assignee !== undefined && String(body.assignee).trim() && !db.prepare("SELECT id FROM technicians WHERE name=?").get(String(body.assignee).trim())) return res.status(400).json({error:"Choose a technician from the roster."});
   if (body.due_date !== undefined && body.due_date !== "") {
     const parsedDueDate = new Date(`${body.due_date}T00:00:00.000Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(body.due_date) || Number.isNaN(parsedDueDate.valueOf()) || parsedDueDate.toISOString().slice(0, 10) !== body.due_date) return res.status(400).json({ error: "invalid due date" });
@@ -142,6 +173,11 @@ app.patch("/api/tickets/:id", (req, res) => {
   if (comment.length > 5000) return res.status(400).json({ error: "note is too long" });
   const transaction = db.transaction(() => {
     const updates = [
+      ["requester", body.requester === undefined ? undefined : body.requester.trim()],
+      ["issue_type", body.issue_type],
+      ["category", body.category],
+      ["description", body.description === undefined ? undefined : body.description.trim()],
+      ["subject", body.subject === undefined ? undefined : body.subject.trim()],
       ["status", body.status],
       ["priority", body.priority],
       ["assignee", body.assignee === undefined ? undefined : String(body.assignee).trim()],
@@ -150,12 +186,12 @@ app.patch("/api/tickets/:id", (req, res) => {
     for (const [field, value] of updates) {
       if (value !== undefined && value !== current[field]) {
         const emptyLabel = field === "assignee" ? "Unassigned" : "None";
-        const fieldLabel = field === "due_date" ? "Due date" : field === "assignee" ? "Assigned technician" : `${field[0].toUpperCase()}${field.slice(1)}`;
+        const fieldLabel = field === "issue_type" ? "Issue type" : field === "subject" ? "Title" : field === "due_date" ? "Due date" : field === "assignee" ? "Assigned technician" : `${field[0].toUpperCase()}${field.slice(1)}`;
         audit(current, body.author, `${fieldLabel} changed`, `${current[field] || emptyLabel} → ${value || emptyLabel}`);
       }
     }
-    db.prepare(`UPDATE tickets SET status=COALESCE(?,status),priority=COALESCE(?,priority),assignee=COALESCE(?,assignee),due_date=COALESCE(?,due_date),updated_at=datetime('now') WHERE id=?`)
-      .run(body.status, body.priority, body.assignee === undefined ? null : String(body.assignee).trim(), body.due_date, id);
+    db.prepare(`UPDATE tickets SET requester=COALESCE(?,requester),issue_type=COALESCE(?,issue_type),category=COALESCE(?,category),description=COALESCE(?,description),subject=COALESCE(?,subject),status=COALESCE(?,status),priority=COALESCE(?,priority),assignee=COALESCE(?,assignee),due_date=COALESCE(?,due_date),updated_at=datetime('now') WHERE id=?`)
+      .run(body.requester === undefined ? null : body.requester.trim(), body.issue_type, body.category, body.description === undefined ? null : body.description.trim(), body.subject === undefined ? null : body.subject.trim(), body.status, body.priority, body.assignee === undefined ? null : String(body.assignee).trim(), body.due_date, id);
     if (comment) {
       const author = actorName(body.author);
       db.prepare("INSERT INTO comments(ticket_id,author,body) VALUES(?,?,?)").run(id, author, comment);
