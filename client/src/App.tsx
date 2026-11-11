@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { ClipboardList, LayoutDashboard, Plus, Search, Settings, X } from "lucide-react";
 import "./styles.css";
+import { Maintenance, TicketWork } from "./TicketWork";
 
 type Role = "Reporter" | "Help desk" | "Manager";
 type Comment = { id:number; author:string; body:string; created_at:string };
@@ -82,12 +83,12 @@ export default function App(){
   const metrics=useMemo(()=>({open:tickets.filter(t=>!['Resolved','Closed'].includes(t.status)).length,progress:tickets.filter(t=>t.status==='In Progress').length,critical:tickets.filter(t=>t.priority==='Critical').length,resolved:tickets.filter(t=>t.status==='Resolved').length}),[tickets]);
 
   return <>
-    <Header role={role} setRole={r=>{setRole(r);localStorage.setItem("it-role",r);if((r==="Reporter"&&screen==="audit")||(r!=="Manager"&&screen==="technicians"))setScreen("dashboard")}} screen={screen} setScreen={setScreen} create={()=>{setNotice("");setDialog(true)}} canManage={canManage}/>
+    <Header role={role} setRole={r=>{setRole(r);localStorage.setItem("it-role",r);if((r==="Reporter"&&(screen==="audit"||screen==="maintenance"))||(r!=="Manager"&&screen==="technicians"))setScreen("dashboard")}} screen={screen} setScreen={setScreen} create={()=>{setNotice("");setDialog(true)}} canManage={canManage}/>
     <main>
       <div className="crumb">Department <b>/</b> <strong>IT Department</strong></div>
       <div className="title-row"><div><p className="eyebrow">{role.toUpperCase()} WORKSPACE</p><h1>{screen==="audit"?"Audit trail":screen[0].toUpperCase()+screen.slice(1)}</h1><span className="sub">{screen==="audit"?"A timestamped history of ticket activity.":role==='Reporter'?"Submit requests and follow their progress.":role==='Manager'?"See workload and service performance.":"Triage, assign, and resolve IT requests."}</span></div></div>
-      {canManage&&screen!=="audit"&&screen!=="technicians"&&<div className="metrics"><Metric label="Open issues" value={metrics.open}/><Metric label="In progress" value={metrics.progress}/><Metric label="Critical" value={metrics.critical}/><Metric label="Resolved" value={metrics.resolved}/></div>}
-      {screen==='technicians'&&role==='Manager'?<TechnicianSettings technicians={technicians} refresh={load}/>:screen==='audit'?<AuditTable events={auditEvents}/>:screen==='reports'?<section className="screen-card"><h2>IT service reports</h2><p>Workload and response reporting for the IT department.</p></section>:screen==='settings'?<section className="screen-card"><h2>IT department settings</h2><p>There is one shared workflow for the IT department.</p></section>:<>
+      {canManage&&screen!=="audit"&&screen!=="technicians"&&screen!=="reports"&&screen!=="maintenance"&&<div className="metrics"><Metric label="Open issues" value={metrics.open}/><Metric label="In progress" value={metrics.progress}/><Metric label="Critical" value={metrics.critical}/><Metric label="Resolved" value={metrics.resolved}/></div>}
+      {screen==='technicians'&&role==='Manager'?<TechnicianSettings technicians={technicians} refresh={load}/>:screen==='audit'?<AuditTable events={auditEvents}/>:screen==='maintenance'&&canManage?<Maintenance technicians={technicians}/>:screen==='reports'?<ClosedTicketsReport technicians={technicians} open={open}/>:screen==='settings'?<section className="screen-card"><h2>IT department settings</h2><p>There is one shared workflow for the IT department.</p></section>:<>
         <div className="toolbar"><div className="filters"><label className="search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&load()} placeholder="Search IT issues"/></label><select className="status-filter" aria-label="Filter by status" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">All statuses</option>{statuses.map(s=><option key={s}>{s}</option>)}</select><select className="technician-filter" aria-label="Filter by assigned technician" value={assignee} onChange={e=>setAssignee(e.target.value)}><option value="all">All technicians</option><option value="unassigned">Unassigned</option>{technicians.map(tech=><option key={tech.id} value={`tech:${tech.name}`}>{tech.name}</option>)}</select><label className="date-sort">Date order<select aria-label="Date order" value={dateOrder} onChange={e=>setDateOrder(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label><label className="date-filter">From<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label className="date-filter">To<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>{canManage&&<button className="secondary archive-toggle" onClick={()=>setArchived(v=>!v)}>{archived?"← Active tickets":"Archived tickets"}</button>}</div></div>
         {tickets.length===0?<section className="screen-card" role="status"><h2>No tickets match these filters</h2><p>Try another technician, status, date range, or search.</p></section>:screen==='dashboard'&&canManage&&!archived&&status!=='Resolved'?<><p className="board-help">Drag a ticket to another column to change its status. Open a ticket to assign a technician, set a due date, or add a note.</p><Board tickets={tickets} open={open} move={(id,s)=>void updateTicket(id,{status:s,author:role})}/></>:<Backlog tickets={tickets} open={open}/>}
       </>}
@@ -99,7 +100,7 @@ export default function App(){
   </>;
 }
 
-function Header({role,setRole,screen,setScreen,create,canManage}:{role:Role;setRole:(r:Role)=>void;screen:string;setScreen:(s:string)=>void;create:()=>void;canManage:boolean}){const items:[[string,string],...[string,string][]]=[["dashboard","Dashboard"],["tickets","Tickets"],["reports","Reports"],["settings","Settings"],...(role==="Manager"?[["technicians","Technicians"] as [string,string]]:[]),...(canManage?[["audit","Audit trail"] as [string,string]]:[])];return <header><div className="brand"><span className="mark">IT</span><div><strong>MSI IT Service Desk</strong><small>One department · One support queue</small></div></div><nav className="top-nav">{items.map(([k,l])=><button className={screen===k?"active":""} onClick={()=>setScreen(k)} key={k}>{l}</button>)}</nav><div className="head-actions"><label className="role-switcher">Role<select value={role} onChange={e=>setRole(e.target.value as Role)}><option>Reporter</option><option>Help desk</option><option>Manager</option></select></label>{role!=="Manager"&&<button className="primary" onClick={create}><Plus size={16}/> Create issue</button>}</div></header>}
+function Header({role,setRole,screen,setScreen,create,canManage}:{role:Role;setRole:(r:Role)=>void;screen:string;setScreen:(s:string)=>void;create:()=>void;canManage:boolean}){const items:[[string,string],...[string,string][]]=[["dashboard","Dashboard"],["tickets","Tickets"],["reports","Reports"],["settings","Settings"],...(role==="Manager"?[["technicians","Technicians"] as [string,string]]:[]),...(canManage?[["maintenance","Maintenance"] as [string,string],["audit","Audit trail"] as [string,string]]:[])];return <header><div className="brand"><span className="mark">IT</span><div><strong>MSI IT Service Desk</strong><small>One department · One support queue</small></div></div><nav className="top-nav">{items.map(([k,l])=><button className={screen===k?"active":""} onClick={()=>setScreen(k)} key={k}>{l}</button>)}</nav><div className="head-actions"><label className="role-switcher">Role<select value={role} onChange={e=>setRole(e.target.value as Role)}><option>Reporter</option><option>Help desk</option><option>Manager</option></select></label>{role!=="Manager"&&<button className="primary" onClick={create}><Plus size={16}/> Create issue</button>}</div></header>}
 function Metric({label,value}:{label:string;value:number}){return <div className="metric"><span>{label}</span><strong>{value}</strong></div>}
 function Board({tickets,open,move}:{tickets:Ticket[];open:(id:number)=>void;move:(id:number,status:string)=>void}){const[dragging,setDragging]=useState<number|null>(null);return <div className="board">{statuses.filter(status=>status!=="Resolved").map(s=><section className="column" key={s} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(dragging!==null){move(dragging,s);setDragging(null)}}}><div className="column-head"><span>{s}</span><b>{tickets.filter(t=>t.status===s).length}</b></div>{tickets.filter(t=>t.status===s).map(t=><IssueCard key={t.id} ticket={t} open={open} dragStart={()=>setDragging(t.id)} dragEnd={()=>setDragging(null)}/>)}</section>)}</div>}
 function IssueCard({ticket,open,dragStart,dragEnd}:{ticket:Ticket;open:(id:number)=>void;dragStart:()=>void;dragEnd:()=>void}){return <button className="issue" style={technicianColor(ticket.assignee,ticket.assignee_color)} draggable onDragStart={dragStart} onDragEnd={dragEnd} onClick={()=>open(ticket.id)} title="Open ticket · Drag to change status"><span className="key">IT-{String(ticket.id).padStart(4,"0")}</span><strong>{ticket.subject}</strong><small>{ticket.issue_type} · {ticket.requester}</small><div className="issue-foot"><span className={`tag ${ticket.priority.toLowerCase()}`}>{ticket.priority}</span><span className="state">{ticket.assignee||"Unassigned"}</span></div>{ticket.due_date&&<small className="due-chip">Due {new Date(`${ticket.due_date}T00:00:00`).toLocaleDateString()}</small>}</button>}
@@ -114,6 +115,7 @@ function Detail({ticket,role,close,update,action,technicians}:{technicians:Techn
   const readOnly=role==="Reporter";const[note,setNote]=useState("");const[due,setDue]=useState(ticket.due_date||"");
   useEffect(()=>{setDue(ticket.due_date||"")},[ticket.id,ticket.assignee,ticket.due_date]);
   return <div className="overlay"><section className="drawer"><button className="drawer-close" onClick={close}><X/></button><p className="eyebrow">IT DEPARTMENT / IT-{String(ticket.id).padStart(4,"0")}{ticket.archived?" · ARCHIVED":""}</p><h2>{ticket.subject}</h2>{!readOnly&&<form className="title-edit" onSubmit={async e=>{e.preventDefault();if(!title.trim()||savingTitle)return;setSavingTitle(true);try{await update(ticket.id,{subject:title.trim(),author:role})}finally{setSavingTitle(false)}}}><label>Ticket title<input value={title} onChange={e=>setTitle(e.target.value)} required maxLength={250}/></label><button className="primary" disabled={savingTitle||!title.trim()||title.trim()===ticket.subject}>{savingTitle?"Saving…":"Save title"}</button></form>}<span className="meta">Reported by {ticket.requester}</span>{!readOnly&&<form className="title-edit" onSubmit={async e=>{e.preventDefault();if(!requester.trim()||savingRequester)return;setSavingRequester(true);try{await update(ticket.id,{requester:requester.trim(),author:role})}finally{setSavingRequester(false)}}}><label>Requester<input value={requester} onChange={e=>setRequester(e.target.value)} required maxLength={250}/></label><button className="primary" disabled={savingRequester||!requester.trim()||requester.trim()===ticket.requester}>{savingRequester?"Saving…":"Save requester"}</button></form>}{readOnly?<p className="description">{ticket.description}</p>:<form className="description-edit" onSubmit={async e=>{e.preventDefault();if(!description.trim()||savingDescription)return;setSavingDescription(true);try{await update(ticket.id,{description:description.trim(),author:role})}finally{setSavingDescription(false)}}}><label>Ticket description<textarea value={description} onChange={e=>setDescription(e.target.value)} required maxLength={10000} rows={6}/></label><button className="primary" disabled={savingDescription||!description.trim()||description.trim()===ticket.description}>{savingDescription?"Saving…":"Save description"}</button></form>}<label>Issue type<select disabled={readOnly} value={ticket.issue_type} onChange={e=>void update(ticket.id,{issue_type:e.target.value,author:role})}>{["Task","Incident","Service request","Bug"].map(value=><option key={value}>{value}</option>)}</select></label><label>Category<select disabled={readOnly} value={ticket.category} onChange={e=>void update(ticket.id,{category:e.target.value,author:role})}>{["Hardware","Software","Access","Network","General"].map(value=><option key={value}>{value}</option>)}</select></label><label>Status<select disabled={readOnly} value={ticket.status} onChange={e=>void update(ticket.id,{status:e.target.value,author:role})}>{statuses.map(s=><option key={s}>{s}</option>)}</select></label><label>Due date<input type="date" disabled={readOnly} value={due} onChange={e=>setDue(e.target.value)} onBlur={()=>{if(due!==(ticket.due_date||""))void update(ticket.id,{due_date:due,author:role})}}/></label>{!readOnly&&<><label>Assigned technician<select value={ticket.assignee} onChange={e=>void update(ticket.id,{assignee:e.target.value,author:role})}><option value="">Unassigned</option>{technicians.map(tech=><option key={tech.id} value={tech.name}>{tech.name}</option>)}</select></label><label>Priority<select value={ticket.priority} onChange={e=>void update(ticket.id,{priority:e.target.value,author:role})}><option>Low</option><option>Normal</option><option>High</option><option>Critical</option></select></label><div className="ticket-actions">{ticket.archived?<button className="secondary" onClick={()=>action("restore")}>Restore ticket</button>:<button className="secondary" onClick={()=>action("archive")}>Archive ticket</button>}<button className="danger" onClick={()=>action("delete")}>Delete permanently</button></div></>}
+    {!readOnly&&<TicketWork key={ticket.id} id={ticket.id} assignee={ticket.assignee} technicians={technicians} actor={role}/>}
     <h3>Activity and notes</h3>{ticket.comments?.map(c=><div className="comment" key={`c${c.id}`}><b>{c.author}</b><small>{formatLocalDateTime(c.created_at)}</small><p>{c.body}</p></div>)}{!readOnly&&ticket.audit?.map(a=><div className="audit-item" key={`a${a.id}`}><div><b>{a.action}</b><small>{formatLocalDateTime(a.created_at)} · {a.actor}</small></div>{a.details&&<p>{a.details}</p>}</div>)}{!readOnly&&<form className="note-form" onSubmit={async e=>{e.preventDefault();const saved=await update(ticket.id,{comment:note,author:role});if(saved)setNote("")}}><label htmlFor="ticket-note">Add an internal note</label><textarea id="ticket-note" value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Write an update for the support team" required/><button className="primary" disabled={!note.trim()}>Save note</button></form>}
   </section></div>;
 }
@@ -137,5 +139,74 @@ function TechnicianSettings({technicians,refresh}:{technicians:Technician[];refr
     <form className="technician-form" onSubmit={save}><label>Technician name<input required maxLength={120} value={name} onChange={e=>setName(e.target.value)} placeholder="Enter technician name"/></label><label>Ticket color<input type="color" value={color} onChange={e=>setColor(e.target.value)}/></label><button className="primary" disabled={busy||!name.trim()}>{busy?"Adding…":"Add technician"}</button></form>
     {message&&<p role="status">{message}</p>}
     <div className="technician-list">{technicians.map(tech=><div className="technician-row" key={tech.id}><span className="color-dot" style={{background:tech.color}}/><strong>{tech.name}</strong><label>Ticket color<input aria-label={`Color for ${tech.name}`} type="color" value={tech.color} onChange={e=>void changeColor(tech.id,e.target.value)}/></label><code>{tech.color}</code></div>)}{!technicians.length&&<p>No technicians yet. Add your first technician above.</p>}</div>
+  </section>;
+}
+
+type ClosedReportTicket = { id:number; subject:string; assignee:string; closed_at:string };
+
+function ClosedTicketsReport({technicians,open}:{technicians:Technician[];open:(id:number)=>void}) {
+  const [from,setFrom]=useState("");
+  const [to,setTo]=useState("");
+  const [assignee,setAssignee]=useState("all");
+  const [results,setResults]=useState<ClosedReportTicket[]|null>(null);
+  const [period,setPeriod]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+
+  async function generate(event:React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setResults(null);
+    setError("");
+    if (!from || !to || from>to) {
+      setError("Choose a start date on or before the end date.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const params=new URLSearchParams({from:localDayStartUtc(from),to:localDayStartUtc(to,1)});
+      const response=await fetch(`/api/reports/closed-tickets?${params}`);
+      if (!response.ok) throw new Error("Report request failed");
+      const rows:ClosedReportTicket[]=await response.json();
+      setResults(rows.filter(row=>assignee==="all"||row.assignee===assignee.slice(5)));
+      setPeriod(`${from} through ${to}`);
+    } catch {
+      setError("Could not generate the report. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const groups=new Map<string,ClosedReportTicket[]>();
+  for (const ticket of results||[]) {
+    const group=groups.get(ticket.assignee);
+    if (group) group.push(ticket);
+    else groups.set(ticket.assignee,[ticket]);
+  }
+
+  return <section className="screen-card closed-report">
+    <h2>Closed tickets by technician</h2>
+    <p>Shows currently closed tickets by assigned technician and most recent recorded closure. Dates use your local time.</p>
+    <form className="report-filters" onSubmit={generate}>
+      <label>From<input type="date" required value={from} onChange={e=>setFrom(e.target.value)}/></label>
+      <label>Through<input type="date" required min={from||undefined} value={to} onChange={e=>setTo(e.target.value)}/></label>
+      <label>Technician<select value={assignee} onChange={e=>setAssignee(e.target.value)}>
+        <option value="all">All technicians</option>
+        <option value="tech:">Unassigned</option>
+        {technicians.map(tech=><option key={tech.id} value={`tech:${tech.name}`}>{tech.name}</option>)}
+      </select></label>
+      <button className="primary" disabled={busy}>{busy?"Generating…":"Generate report"}</button>
+    </form>
+    {error&&<p role="alert">{error}</p>}
+    {results&&<p role="status"><strong>{results.length}</strong> closed {results.length===1?"ticket":"tickets"} · {period}</p>}
+    {results?.length===0&&<p>No tickets match these filters.</p>}
+    {Array.from(groups,([name,tickets])=><section className="report-group" key={name}>
+      <h3>{name||"Unassigned"} ({tickets.length})</h3>
+      <table><thead><tr><th scope="col">Ticket</th><th scope="col">Closed at</th></tr></thead>
+        <tbody>{tickets.map(ticket=><tr key={ticket.id}>
+          <td><button className="report-ticket" onClick={()=>open(ticket.id)}>IT-{String(ticket.id).padStart(4,"0")} · {ticket.subject}</button></td>
+          <td>{formatLocalDateTime(ticket.closed_at)}</td>
+        </tr>)}</tbody>
+      </table>
+    </section>)}
   </section>;
 }

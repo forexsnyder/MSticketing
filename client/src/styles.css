@@ -82,3 +82,7 @@ dialog{border:1px solid #dbe3ed;background:#fff;box-shadow:0 24px 80px rgba(24,4
 .title-edit{display:flex;align-items:end;gap:10px;margin:18px 0}.title-edit label{flex:1;display:grid;gap:7px;font-size:12px;color:#52627a}.title-edit button{white-space:nowrap}
 
 .description-edit{display:grid;gap:10px;margin:24px 0}.description-edit label{display:grid;gap:7px;font-size:12px;color:#52627a}.description-edit textarea{resize:vertical;min-height:130px;line-height:1.6}.description-edit button{justify-self:start}
+
+.report-filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:20px 0}.report-filters label{display:grid;gap:6px;font-size:12px;color:#52627a}.report-group{margin-top:24px}.report-group table{width:100%;border-collapse:collapse}.report-group th,.report-group td{padding:10px;text-align:left;border-bottom:1px solid #dfe5ee}.report-ticket{border:0;background:transparent;color:#1f55ba;text-align:left;padding:0;text-decoration:underline}
+
+.work-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:12px 0 20px}.work-form label{display:grid;gap:6px;color:#52627a;font-size:12px}.work-form .wide{grid-column:1/-1}.work-form button{justify-self:start}.ticket-work{padding-top:8px;border-top:1px solid var(--line)}.maintenance-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}

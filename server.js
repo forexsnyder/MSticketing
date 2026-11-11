@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { registerTicketWork } from "./ticket-work.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
@@ -124,6 +125,31 @@ app.get("/api/tickets", (req, res) => {
     ORDER BY created_at ${dateOrder}, id ${dateOrder}`).all(...params));
 });
 
+app.get("/api/reports/closed-tickets", (req, res) => {
+  const { from, to } = req.query;
+  const start = typeof from === "string" ? Date.parse(from) : NaN;
+  const end = typeof to === "string" ? Date.parse(to) : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+    return res.status(400).json({ error: "Select a valid date range." });
+  }
+
+  // Find each ticket's latest closure before applying the report's date range.
+  const rows = db.prepare(`
+    WITH closures AS (
+      SELECT ticket_id, MAX(created_at) AS closed_at
+      FROM audit_log
+      WHERE action = 'Status changed' AND details LIKE '% → Closed'
+      GROUP BY ticket_id
+    )
+    SELECT t.id, t.subject, t.assignee, c.closed_at
+    FROM tickets t JOIN closures c ON c.ticket_id = t.id
+    WHERE t.status = 'Closed'
+      AND c.closed_at >= datetime(?) AND c.closed_at < datetime(?)
+    ORDER BY t.assignee COLLATE NOCASE, c.closed_at DESC, t.id DESC
+  `).all(new Date(start).toISOString(), new Date(end).toISOString());
+  res.json(rows);
+});
+
 app.get("/api/audit", (_req, res) => {
   res.json(db.prepare("SELECT * FROM audit_log ORDER BY id DESC LIMIT 500").all());
 });
@@ -235,6 +261,7 @@ app.delete("/api/tickets/:id", (req, res) => {
   return res.json({ ok: true });
 });
 
+registerTicketWork(app, db, audit, actorName);
 app.get("*", (_req, res) => res.sendFile(path.join(clientDist, "index.html")));
 const port = Number(process.env.PORT || 3010);
 app.listen(port, "0.0.0.0", () => console.log(`IT Ticketing listening on ${port}`));
